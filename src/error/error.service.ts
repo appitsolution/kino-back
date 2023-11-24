@@ -835,44 +835,56 @@ export class ErrorService {
   }
 
   startPolling() {
-    if (!this.firstStartError) {
-      this.firstStartError = true;
-      return;
-    }
     const pollingInterval = 1200;
 
-    this.pollForNewErrors();
+    if (!this.firstStartError) {
+      this.firstStartError = true;
+    } else {
+      this.pollForNewErrors();
+    }
 
     setInterval(() => {
-      this.pollForNewErrors();
+      if (!this.firstStartError) {
+        this.firstStartError = true;
+      } else {
+        this.pollForNewErrors();
+      }
     }, pollingInterval);
   }
 
   startClear() {
-    if (!this.firstStartClear) {
-      this.firstStartClear = true;
-      return;
-    }
     const pollingInterval = 1000 * 60 * 60 * 24;
 
-    this.checkClear();
+    if (!this.firstStartClear) {
+      this.firstStartClear = true;
+    } else {
+      this.checkClear();
+    }
 
     setInterval(() => {
-      this.checkClear();
+      if (!this.firstStartClear) {
+        this.firstStartClear = true;
+      } else {
+        this.checkClear();
+      }
     }, pollingInterval);
   }
 
   startActualLvlPopcorn() {
-    if (!this.firstStartPopcorn) {
-      this.firstStartPopcorn = true;
-      return;
-    }
     const pollingInterval = 1000 * 60 * 60 * 4;
 
-    this.checkLvlPopcorn();
+    if (!this.firstStartPopcorn) {
+      this.firstStartPopcorn = true;
+    } else {
+      this.checkLvlPopcorn();
+    }
 
     setInterval(() => {
-      this.checkLvlPopcorn();
+      if (!this.firstStartPopcorn) {
+        this.firstStartPopcorn = true;
+      } else {
+        this.checkLvlPopcorn();
+      }
     }, pollingInterval);
   }
 }
