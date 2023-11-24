@@ -9,4 +9,7 @@ export class UpdateComplectationAboutDeviceDto {
 
   @ApiProperty()
   new_component_type_id: number;
+
+  @ApiProperty()
+  title: number;
 }

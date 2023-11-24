@@ -328,206 +328,274 @@ export class AboutDevicesService {
 
     // Complectation
 
-    const modulesDevice = await this.modules_of_deviceRepository.find({
-      where: { apparatus_id: currentApparat.id },
+    const moduleListAll = await this.module_listRepository.find({
+      where: {
+        apparatus_type_id: 1,
+      },
     });
-    const modulesDeviceTitles = await (async () => {
-      const list = await Promise.all(
-        modulesDevice.map(async (item) => {
-          const title = await this.language_module_listRepository.findOne({
-            where: { module_id: item.components_id, language: lang },
-          });
 
-          const value = await this.language_module_type_listRepository.findOne({
-            where: { module_type_id: item.component_type_id, language: lang },
-          });
+    const prevResult = await Promise.all(
+      moduleListAll.map(async (item) => {
+        const title = await this.language_module_listRepository.findOne({
+          where: {
+            language: lang,
+            module_id: item.id,
+          },
+        });
 
-          const variantLang = await (async () => {
-            // const module_type_id_current =
-            // await this.module_type_listRepository.findOne({
-            //   where: {
-            //     id: item.component_type_id,
-            //   },
-            // });
-            // if (!module_type_id_current) return [];
-            const variant = await this.module_type_listRepository.find({
-              where: {
-                components_id: item.components_id,
-              },
-            });
-            // console.log(variant);
+        const variant = await this.module_type_listRepository.find({
+          where: { components_id: item.id },
+        });
 
-            if (!variant) return [];
-            return await Promise.all(
-              variant.map(async (item) => {
-                const variantLangCurrent =
-                  await this.language_module_type_listRepository.findOne({
-                    where: {
-                      module_type_id: item.id,
-                      language: lang,
-                    },
-                  });
-
-                return {
-                  id: item.id,
-                  // module_type_id: variantLangCurrent.id,
-
-                  component_type: variantLangCurrent.translation,
-                };
-              }),
-            );
-          })();
-
-          return {
-            variant: variantLang,
+        return {
+          title: {
             id: item.id,
-            apparatus_id: item.apparatus_id,
-            title: {
-              id: title.id,
-              title: title.translation,
-            },
-            value: {
-              id: value ? value.module_type_id : null,
-              value: value ? value.translation : null,
-            },
-            lang: lang,
-          };
-        }),
-      );
+            title: title.translation,
+          },
+          value: {
+            id: null,
+            value: null,
+          },
+          variant: variant,
+          lang: lang,
+        };
+      }),
+    );
 
-      const moduleListAll = await this.module_listRepository.find({
-        where: {
-          apparatus_type_id: 1,
-        },
-      });
-      const result = await Promise.all(
-        moduleListAll.map(async (item) => {
-          const title = await this.language_module_listRepository.findOne({
+    const result = await Promise.all(
+      prevResult.map(async (item) => {
+        const checkCurrentModule =
+          await this.modules_of_deviceRepository.findOne({
             where: {
-              module_id: item.id,
+              apparatus_id: currentApparat.id,
+              components_id: item.title.id,
+            },
+          });
+        if (!checkCurrentModule) return item;
+        if (checkCurrentModule.component_type_id) {
+          const value = await this.language_module_type_listRepository.findOne({
+            where: {
               language: lang,
+              module_type_id: checkCurrentModule.component_type_id,
             },
           });
 
           return {
-            variant: [],
-            id: item.id,
-            apparatus_id: null,
-            title: {
-              id: title.id,
-              title: title.translation,
-            },
+            id: checkCurrentModule.id,
+            ...item,
             value: {
-              id: null,
-              value: null,
+              id: checkCurrentModule.component_type_id,
+              value: value.translation,
             },
-            lang: lang,
           };
-        }),
-      );
+        } else {
+          return item;
+        }
+      }),
+    );
 
-      if (list.length === 0) {
-        const modulesDeviceCurrentFirst =
-          await this.modules_of_deviceRepository.find({});
-        const modulesDeviceNew = await this.modules_of_deviceRepository.find({
-          where: { apparatus_id: modulesDeviceCurrentFirst[0].apparatus_id },
-        });
-        const newList = await Promise.all(
-          modulesDeviceNew.map(async (newItem) => {
-            const createModules = await this.modules_of_deviceRepository.save(
-              this.modules_of_deviceRepository.create({
-                apparatus_id: currentApparat.id,
-                components_id: newItem.components_id,
-                component_type_id: 0,
-              }),
-            );
+    // console.log(result);
 
-            return createModules;
-          }),
-        );
+    // const modulesDevice = await this.modules_of_deviceRepository.find({
+    //   where: { apparatus_id: currentApparat.id },
+    // });
+    // const modulesDeviceTitles = await (async () => {
+    //   const list = await Promise.all(
+    //     modulesDevice.map(async (item) => {
+    //       const title = await this.language_module_listRepository.findOne({
+    //         where: { module_id: item.components_id, language: lang },
+    //       });
 
-        const list = await Promise.all(
-          newList.map(async (item) => {
-            const title = await this.language_module_listRepository.findOne({
-              where: { module_id: item.components_id, language: lang },
-            });
+    //       const value = await this.language_module_type_listRepository.findOne({
+    //         where: { module_type_id: item.component_type_id, language: lang },
+    //       });
 
-            const value =
-              await this.language_module_type_listRepository.findOne({
-                where: {
-                  module_type_id: item.component_type_id,
-                  language: lang,
-                },
-              });
+    //       const variantLang = await (async () => {
+    //         // const module_type_id_current =
+    //         // await this.module_type_listRepository.findOne({
+    //         //   where: {
+    //         //     id: item.component_type_id,
+    //         //   },
+    //         // });
+    //         // if (!module_type_id_current) return [];
+    //         const variant = await this.module_type_listRepository.find({
+    //           where: {
+    //             components_id: item.components_id,
+    //           },
+    //         });
+    //         // console.log(variant);
 
-            const variantLang = await (async () => {
-              // const module_type_id_current =
-              // await this.module_type_listRepository.findOne({
-              //   where: {
-              //     id: item.component_type_id,
-              //   },
-              // });
-              // if (!module_type_id_current) return [];
-              const variant = await this.module_type_listRepository.find({
-                where: {
-                  components_id: item.components_id,
-                },
-              });
-              // console.log(variant);
+    //         if (!variant) return [];
+    //         return await Promise.all(
+    //           variant.map(async (item) => {
+    //             const variantLangCurrent =
+    //               await this.language_module_type_listRepository.findOne({
+    //                 where: {
+    //                   module_type_id: item.id,
+    //                   language: lang,
+    //                 },
+    //               });
 
-              if (!variant) return [];
-              return await Promise.all(
-                variant.map(async (item) => {
-                  const variantLangCurrent =
-                    await this.language_module_type_listRepository.findOne({
-                      where: {
-                        module_type_id: item.id,
-                        language: lang,
-                      },
-                    });
+    //             return {
+    //               id: item.id,
+    //               // module_type_id: variantLangCurrent.id,
 
-                  return {
-                    id: item.id,
-                    // module_type_id: variantLangCurrent.id,
+    //               component_type: variantLangCurrent.translation,
+    //             };
+    //           }),
+    //         );
+    //       })();
 
-                    component_type: variantLangCurrent.translation,
-                  };
-                }),
-              );
-            })();
+    //       return {
+    //         variant: variantLang,
+    //         id: item.id,
+    //         apparatus_id: item.apparatus_id,
+    //         title: {
+    //           id: title.id,
+    //           title: title.translation,
+    //         },
+    //         value: {
+    //           id: value ? value.module_type_id : null,
+    //           value: value ? value.translation : null,
+    //         },
+    //         lang: lang,
+    //       };
+    //     }),
+    //   );
 
-            return {
-              variant: variantLang,
-              id: item.id,
-              apparatus_id: item.apparatus_id,
-              title: {
-                id: title.id,
-                title: title.translation,
-              },
-              value: {
-                id: value ? value.module_type_id : null,
-                value: value ? value.translation : null,
-              },
-              lang: lang,
-            };
-          }),
-        );
+    //   const moduleListAll = await this.module_listRepository.find({
+    //     where: {
+    //       apparatus_type_id: 1,
+    //     },
+    //   });
+    //   const result = await Promise.all(
+    //     moduleListAll.map(async (item) => {
+    //       const title = await this.language_module_listRepository.findOne({
+    //         where: {
+    //           module_id: item.id,
+    //           language: lang,
+    //         },
+    //       });
 
-        return list;
-      } else {
-        return result.map((item) => {
-          const check = list.find(
-            (checkItem) => checkItem.title.title === item.title.title,
-          );
+    //       return {
+    //         variant: [],
+    //         id: item.id,
+    //         apparatus_id: null,
+    //         title: {
+    //           id: title.id,
+    //           title: title.translation,
+    //         },
+    //         value: {
+    //           id: null,
+    //           value: null,
+    //         },
+    //         lang: lang,
+    //       };
+    //     }),
+    //   );
 
-          if (!check) {
-            return item;
-          } else {
-            return check;
-          }
-        });
-      }
-    })();
+    //   if (list.length === 0) {
+    //     const modulesDeviceCurrentFirst =
+    //       await this.modules_of_deviceRepository.find({});
+    //     const modulesDeviceNew = await this.modules_of_deviceRepository.find({
+    //       where: { apparatus_id: modulesDeviceCurrentFirst[0].apparatus_id },
+    //     });
+    //     const newList = await Promise.all(
+    //       modulesDeviceNew.map(async (newItem) => {
+    //         const createModules = await this.modules_of_deviceRepository.save(
+    //           this.modules_of_deviceRepository.create({
+    //             apparatus_id: currentApparat.id,
+    //             components_id: newItem.components_id,
+    //             component_type_id: 0,
+    //           }),
+    //         );
+
+    //         return createModules;
+    //       }),
+    //     );
+
+    //     const list = await Promise.all(
+    //       newList.map(async (item) => {
+    //         const title = await this.language_module_listRepository.findOne({
+    //           where: { module_id: item.components_id, language: lang },
+    //         });
+
+    //         const value =
+    //           await this.language_module_type_listRepository.findOne({
+    //             where: {
+    //               module_type_id: item.component_type_id,
+    //               language: lang,
+    //             },
+    //           });
+
+    //         const variantLang = await (async () => {
+    //           // const module_type_id_current =
+    //           // await this.module_type_listRepository.findOne({
+    //           //   where: {
+    //           //     id: item.component_type_id,
+    //           //   },
+    //           // });
+    //           // if (!module_type_id_current) return [];
+    //           const variant = await this.module_type_listRepository.find({
+    //             where: {
+    //               components_id: item.components_id,
+    //             },
+    //           });
+    //           // console.log(variant);
+
+    //           if (!variant) return [];
+    //           return await Promise.all(
+    //             variant.map(async (item) => {
+    //               const variantLangCurrent =
+    //                 await this.language_module_type_listRepository.findOne({
+    //                   where: {
+    //                     module_type_id: item.id,
+    //                     language: lang,
+    //                   },
+    //                 });
+
+    //               return {
+    //                 id: item.id,
+    //                 // module_type_id: variantLangCurrent.id,
+
+    //                 component_type: variantLangCurrent.translation,
+    //               };
+    //             }),
+    //           );
+    //         })();
+
+    //         return {
+    //           variant: variantLang,
+    //           id: item.id,
+    //           apparatus_id: item.apparatus_id,
+    //           title: {
+    //             id: title.id,
+    //             title: title.translation,
+    //           },
+    //           value: {
+    //             id: value ? value.module_type_id : null,
+    //             value: value ? value.translation : null,
+    //           },
+    //           lang: lang,
+    //         };
+    //       }),
+    //     );
+
+    //     return list;
+    //   } else {
+    //     return result.map((item) => {
+    //       const check = list.find(
+    //         (checkItem) => checkItem.title.title === item.title.title,
+    //       );
+
+    //       if (!check) {
+    //         return item;
+    //       } else {
+    //         return check;
+    //       }
+    //     });
+    //   }
+    // })();
 
     // SERVICE
 
@@ -658,7 +726,7 @@ export class AboutDevicesService {
           0,
         ),
       },
-      complectation: modulesDeviceTitles,
+      complectation: result,
       service: serviceDeviceMaintenanceTitle.filter((item) => item !== null),
     };
   }
@@ -668,7 +736,6 @@ export class AboutDevicesService {
     user_id: number,
     updateData: any,
   ) {
-    console.log(updateData);
     if (!serial_number || !updateData) {
       return {
         code: 400,
@@ -911,6 +978,8 @@ export class AboutDevicesService {
       };
     }
 
+    console.log(updateData);
+
     const currentUser = await this.usersRepository.findOne({
       where: {
         id: user_id,
@@ -964,15 +1033,40 @@ export class AboutDevicesService {
     try {
       await Promise.all(
         updateData.map(async (item) => {
-          await this.modules_of_deviceRepository.update(
-            {
+          if (!item.id) {
+            await this.modules_of_deviceRepository.save(
+              this.modules_of_deviceRepository.create({
+                apparatus_id: currentApparat.id,
+                component_type_id: item.new_component_type_id,
+                components_id: item.title,
+              }),
+            );
+            return;
+          }
+          const checkModule = await this.modules_of_deviceRepository.findOne({
+            where: {
               id: item.id,
-              apparatus_id: item.apparatus_id,
             },
-            {
-              component_type_id: item.new_component_type_id,
-            },
-          );
+          });
+          if (checkModule) {
+            await this.modules_of_deviceRepository.update(
+              {
+                id: item.id,
+                apparatus_id: item.apparatus_id,
+              },
+              {
+                component_type_id: item.new_component_type_id,
+              },
+            );
+          } else {
+            await this.modules_of_deviceRepository.save(
+              this.modules_of_deviceRepository.create({
+                apparatus_id: currentApparat.id,
+                component_type_id: item.new_component_type_id,
+                components_id: item.title,
+              }),
+            );
+          }
         }),
       );
 
