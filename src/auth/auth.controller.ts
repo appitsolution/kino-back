@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateAuthDto } from './dto/create-auth.dto';
@@ -17,9 +18,13 @@ import { VerifyAuthDto } from './dto/verify.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @ApiQuery({ name: 'user_id' })
   @Post('register')
-  create(@Body() createAuthDto: CreateAuthDto) {
-    return this.authService.create(createAuthDto);
+  create(
+    @Body() createAuthDto: CreateAuthDto,
+    @Query() args: { user_id: number },
+  ) {
+    return this.authService.create(createAuthDto, +args.user_id);
   }
 
   @Post('login')

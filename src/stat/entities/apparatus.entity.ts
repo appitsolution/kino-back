@@ -26,6 +26,9 @@ export class apparatus {
   dealer_id: number;
   @Column()
   operator_id: number;
+
+
+
   @Column()
   number_score: string;
   @Column()

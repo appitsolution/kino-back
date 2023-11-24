@@ -15,6 +15,7 @@ import { cleaning } from 'src/stat/entities/cleaning.entity';
 import { popcorn_level } from 'src/stat/entities/popcorn_level.entity';
 import { Role } from 'src/constants/roles';
 import { actual_popcorn_lvl } from 'src/stat/entities/actual_popcorn_lvl.entity';
+import { users_connect } from 'src/stat/entities/users_connect';
 
 function getCurrentDateTime() {
   const now = new Date();
@@ -56,6 +57,8 @@ export class StatusDevicesService {
     private readonly popcorn_levelRepository: Repository<popcorn_level>,
     @InjectRepository(actual_popcorn_lvl)
     private readonly actual_popcorn_lvlRepository: Repository<actual_popcorn_lvl>,
+    @InjectRepository(users_connect)
+    private readonly usersConnectRepository: Repository<users_connect>,
   ) {}
 
   async statusDevicesQuick(user_id: number, lang: string) {
@@ -81,13 +84,106 @@ export class StatusDevicesService {
 
     const apparatusUser = await (async () => {
       if (currentUser.role === Role.SUPER_ADMIN) {
-        return await this.apparatusRepository.find({});
-      } else {
         return await this.apparatusRepository.find({
           where: {
-            user_id: Number(user_id),
+            type_id: 1,
           },
         });
+      } else {
+        const users = await this.apparatusRepository.find({
+          where: {
+            user_id: Number(user_id),
+            type_id: 1,
+          },
+        });
+
+        const dealers = await this.apparatusRepository.find({
+          where: {
+            dealer_id: Number(user_id),
+            type_id: 1,
+          },
+        });
+
+        const operators = await this.apparatusRepository.find({
+          where: {
+            operator_id: Number(user_id),
+            type_id: 1,
+          },
+        });
+
+        const adminsOrManagerRequest = await this.usersConnectRepository.find({
+          where: {
+            user_id_s: Number(user_id),
+          },
+        });
+
+        const admins = await Promise.all(
+          adminsOrManagerRequest.map(async (item) => {
+            const apparatusAdminOrManager = await this.apparatusRepository.find(
+              {
+                where: {
+                  user_id: item.user_id,
+                  type_id: 1,
+                },
+              },
+            );
+            return apparatusAdminOrManager;
+          }),
+        );
+
+        const manager = await Promise.all(
+          adminsOrManagerRequest.map(async (item) => {
+            const managerRequest = await this.usersConnectRepository.find({
+              where: {
+                user_id_s: item.user_id,
+              },
+            });
+
+            return await Promise.all(
+              managerRequest.map(async (checkItem) => {
+                const apparatusAdminOrManager =
+                  await this.apparatusRepository.find({
+                    where: {
+                      user_id: checkItem.user_id,
+                      type_id: 1,
+                    },
+                  });
+                return apparatusAdminOrManager;
+              }),
+            );
+          }),
+        );
+
+        if (currentUser.role === Role.DEALER) {
+          return dealers;
+        }
+
+        // if (currentUser.role === Role.OPERATOR) {
+        //   return operators;
+        // }
+
+        // if(currentUser.role === Role.ADMIN){
+        //   return admins
+        // }
+
+        const allApparatusList = [
+          ...users,
+          ...dealers,
+          ...operators,
+          ...admins.flat(),
+          ...manager.flat(2),
+        ];
+        const newAllApparatusList = [];
+
+        allApparatusList.forEach((item) => {
+          if (newAllApparatusList.find((fin) => fin.id === item.id)) {
+            return;
+          } else {
+            return newAllApparatusList.push(item);
+          }
+        });
+
+        return newAllApparatusList;
       }
     })();
 
@@ -106,7 +202,7 @@ export class StatusDevicesService {
 
         return {
           name: name ? name.name : null,
-          location: location.translation,
+          location: location ? location.translation : '',
           serial_number: item.serial_number,
         };
       }),
@@ -130,8 +226,10 @@ export class StatusDevicesService {
     const currentApparat = await this.apparatusRepository.findOne({
       where: {
         serial_number: serial_number,
+        type_id: 1,
       },
     });
+
     if (!currentApparat) {
       return {
         code: 404,
@@ -191,7 +289,7 @@ export class StatusDevicesService {
 
     return {
       name: nameApparat.name,
-      location: locationApparat.translation,
+      location: locationApparat ? locationApparat.translation : '',
       serial_number: currentApparat.serial_number,
       lastError: lastError ? lastError : [],
       lastClear: lastClear ? lastClear : [],

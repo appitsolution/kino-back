@@ -11,6 +11,9 @@ export const sendNotification = async (
       title: title,
       body: body,
     });
+
+    return result;
+    // console.log('send', token);
   } catch (err) {
     console.log(err);
   }

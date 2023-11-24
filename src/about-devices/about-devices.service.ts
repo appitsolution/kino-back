@@ -18,6 +18,9 @@ import { update_task } from 'src/stat/entities/update_task.entity';
 import { Role } from 'src/constants/roles';
 import { UpdateComplectationAboutDeviceDto } from './dto/update-complectation-about-device.dto';
 import { module_type_list } from 'src/stat/entities/module_type_list.entity';
+import { module_list } from 'src/stat/entities/module_list.entity';
+import { service_maintenance } from 'src/stat/entities/service_maintenance.entity';
+import { users_connect } from 'src/stat/entities/users_connect';
 
 function getCurrentDateTime() {
   const now = new Date();
@@ -68,10 +71,16 @@ export class AboutDevicesService {
     private readonly update_taskRepository: Repository<update_task>,
     @InjectRepository(module_type_list)
     private readonly module_type_listRepository: Repository<module_type_list>,
+    @InjectRepository(module_list)
+    private readonly module_listRepository: Repository<module_list>,
+    @InjectRepository(service_maintenance)
+    private readonly service_maintenanceRepository: Repository<service_maintenance>,
+    @InjectRepository(users_connect)
+    private readonly usersConnectRepository: Repository<users_connect>,
   ) {}
 
   async devicesQuick(user_id: number, lang: string) {
-    if (user_id === undefined) {
+    if (user_id === undefined || user_id === null) {
       return {
         code: 400,
         message: 'not such arguments',
@@ -95,16 +104,92 @@ export class AboutDevicesService {
       if (currentUser.role === Role.SUPER_ADMIN) {
         return await this.apparatusRepository.find();
       } else {
-        return await this.apparatusRepository.find({
+        const users = await this.apparatusRepository.find({
           where: {
             user_id: Number(user_id),
+            type_id: 1,
           },
         });
+
+        const dealers = await this.apparatusRepository.find({
+          where: {
+            dealer_id: Number(user_id),
+            type_id: 1,
+          },
+        });
+
+        const operators = await this.apparatusRepository.find({
+          where: {
+            operator_id: Number(user_id),
+            type_id: 1,
+          },
+        });
+
+        const adminsOrManagerRequest = await this.usersConnectRepository.find({
+          where: {
+            user_id_s: Number(user_id),
+          },
+        });
+
+        const admins = await Promise.all(
+          adminsOrManagerRequest.map(async (item) => {
+            const apparatusAdminOrManager = await this.apparatusRepository.find(
+              {
+                where: {
+                  user_id: item.user_id,
+                  type_id: 1,
+                },
+              },
+            );
+            return apparatusAdminOrManager;
+          }),
+        );
+
+        const manager = await Promise.all(
+          adminsOrManagerRequest.map(async (item) => {
+            const managerRequest = await this.usersConnectRepository.find({
+              where: {
+                user_id_s: item.user_id,
+              },
+            });
+
+            return await Promise.all(
+              managerRequest.map(async (checkItem) => {
+                const apparatusAdminOrManager =
+                  await this.apparatusRepository.find({
+                    where: {
+                      user_id: checkItem.user_id,
+                    },
+                  });
+                return apparatusAdminOrManager;
+              }),
+            );
+          }),
+        );
+        if (currentUser.role === Role.DEALER) {
+          return dealers;
+        }
+
+        const allApparatusList = [
+          ...users,
+          ...dealers,
+          ...operators,
+          ...admins.flat(),
+          ...manager.flat(2),
+        ];
+        const newAllApparatusList = [];
+
+        allApparatusList.forEach((item) => {
+          if (newAllApparatusList.find((fin) => fin.id === item.id)) {
+            return;
+          } else {
+            return newAllApparatusList.push(item);
+          }
+        });
+
+        return newAllApparatusList;
       }
     })();
-
-    const allDeviceCustomization =
-      await this.device_customizationRepository.find();
 
     const allLangLocation = await this.language_locationRepository.find({
       where: {
@@ -119,27 +204,33 @@ export class AboutDevicesService {
       };
     }
 
-    const result = apparatusUser.map((item) => {
-      const name = allDeviceCustomization.find(
-        (dev) => dev.apparatus_id === item.id,
-      );
+    const result = await Promise.all(
+      apparatusUser.map(async (item) => {
+        const name = await this.device_customizationRepository.findOne({
+          where: {
+            user_id: user_id,
+            apparatus_id: item.id,
+          },
+        });
 
-      const location = allLangLocation.find(
-        (loc) => loc.apparatus_id === item.id,
-      );
+        const location = allLangLocation.find(
+          (loc) => loc.apparatus_id === item.id,
+        );
 
-      return {
-        name: name.name,
-        location: location.translation,
-        serial_number: item.serial_number,
-      };
-    });
+        return {
+          id: item.id,
+          name: name ? name.name : '',
+          location: location ? location.translation : '',
+          serial_number: item.serial_number,
+        };
+      }),
+    );
 
     return result;
   }
 
   async aboutDevicesGet(serial_number: string, user_id: number, lang: string) {
-    if (!serial_number || !lang || user_id === undefined) {
+    if (!serial_number || !lang || user_id === undefined || user_id === null) {
       return {
         code: 400,
         message: 'not such arguments',
@@ -163,6 +254,7 @@ export class AboutDevicesService {
     const currentApparat = await this.apparatusRepository.findOne({
       where: {
         serial_number: serial_number,
+        type_id: 1,
       },
     });
 
@@ -176,29 +268,16 @@ export class AboutDevicesService {
     const nameApparat = await this.device_customizationRepository.findOne({
       where: {
         apparatus_id: currentApparat.id,
-        // user_id: Number(user_id),
+        user_id: Number(user_id),
       },
     });
-
-    if (!nameApparat) {
-      return {
-        code: 404,
-        message: 'name aparat not found',
-      };
-    }
 
     const locationApparat = await this.language_locationRepository.findOne({
       where: {
         apparatus_id: currentApparat.id,
+        language: lang,
       },
     });
-
-    if (!locationApparat) {
-      return {
-        code: 404,
-        message: 'location aparat not found',
-      };
-    }
 
     const ownerApparat = await this.ownerRepository.findOne({
       where: {
@@ -206,12 +285,12 @@ export class AboutDevicesService {
       },
     });
 
-    if (!ownerApparat) {
-      return {
-        code: 404,
-        message: 'owner aparat not found',
-      };
-    }
+    // if (!ownerApparat) {
+    //   return {
+    //     code: 404,
+    //     message: 'owner aparat not found',
+    //   };
+    // }
 
     const userApparat = await this.usersRepository.findOne({
       where: {
@@ -252,64 +331,203 @@ export class AboutDevicesService {
     const modulesDevice = await this.modules_of_deviceRepository.find({
       where: { apparatus_id: currentApparat.id },
     });
-    const modulesDeviceTitles = await Promise.all(
-      modulesDevice.map(async (item) => {
-        const title = await this.language_module_listRepository.findOne({
-          where: { module_id: item.components_id, language: lang },
-        });
+    const modulesDeviceTitles = await (async () => {
+      const list = await Promise.all(
+        modulesDevice.map(async (item) => {
+          const title = await this.language_module_listRepository.findOne({
+            where: { module_id: item.components_id, language: lang },
+          });
 
-        const value = await this.language_module_type_listRepository.findOne({
-          where: { module_type_id: item.component_type_id, language: lang },
-        });
+          const value = await this.language_module_type_listRepository.findOne({
+            where: { module_type_id: item.component_type_id, language: lang },
+          });
 
-        const module_type_id_current =
-          await this.module_type_listRepository.findOne({
+          const variantLang = await (async () => {
+            // const module_type_id_current =
+            // await this.module_type_listRepository.findOne({
+            //   where: {
+            //     id: item.component_type_id,
+            //   },
+            // });
+            // if (!module_type_id_current) return [];
+            const variant = await this.module_type_listRepository.find({
+              where: {
+                components_id: item.components_id,
+              },
+            });
+            // console.log(variant);
+
+            if (!variant) return [];
+            return await Promise.all(
+              variant.map(async (item) => {
+                const variantLangCurrent =
+                  await this.language_module_type_listRepository.findOne({
+                    where: {
+                      module_type_id: item.id,
+                      language: lang,
+                    },
+                  });
+
+                return {
+                  id: item.id,
+                  // module_type_id: variantLangCurrent.id,
+
+                  component_type: variantLangCurrent.translation,
+                };
+              }),
+            );
+          })();
+
+          return {
+            variant: variantLang,
+            id: item.id,
+            apparatus_id: item.apparatus_id,
+            title: {
+              id: title.id,
+              title: title.translation,
+            },
+            value: {
+              id: value ? value.module_type_id : null,
+              value: value ? value.translation : null,
+            },
+            lang: lang,
+          };
+        }),
+      );
+
+      const moduleListAll = await this.module_listRepository.find({
+        where: {
+          apparatus_type_id: 1,
+        },
+      });
+      const result = await Promise.all(
+        moduleListAll.map(async (item) => {
+          const title = await this.language_module_listRepository.findOne({
             where: {
-              id: item.component_type_id,
+              module_id: item.id,
+              language: lang,
             },
           });
 
-        const variant = await this.module_type_listRepository.find({
-          where: {
-            components_id: module_type_id_current.components_id,
-          },
-        });
+          return {
+            variant: [],
+            id: item.id,
+            apparatus_id: null,
+            title: {
+              id: title.id,
+              title: title.translation,
+            },
+            value: {
+              id: null,
+              value: null,
+            },
+            lang: lang,
+          };
+        }),
+      );
 
-        const variantLang = await Promise.all(
-          variant.map(async (item) => {
-            const variantLangCurrent =
+      if (list.length === 0) {
+        const modulesDeviceCurrentFirst =
+          await this.modules_of_deviceRepository.find({});
+        const modulesDeviceNew = await this.modules_of_deviceRepository.find({
+          where: { apparatus_id: modulesDeviceCurrentFirst[0].apparatus_id },
+        });
+        const newList = await Promise.all(
+          modulesDeviceNew.map(async (newItem) => {
+            const createModules = await this.modules_of_deviceRepository.save(
+              this.modules_of_deviceRepository.create({
+                apparatus_id: currentApparat.id,
+                components_id: newItem.components_id,
+                component_type_id: 0,
+              }),
+            );
+
+            return createModules;
+          }),
+        );
+
+        const list = await Promise.all(
+          newList.map(async (item) => {
+            const title = await this.language_module_listRepository.findOne({
+              where: { module_id: item.components_id, language: lang },
+            });
+
+            const value =
               await this.language_module_type_listRepository.findOne({
                 where: {
-                  module_type_id: item.id,
+                  module_type_id: item.component_type_id,
                   language: lang,
                 },
               });
 
-            return {
-              id: item.id,
-              // module_type_id: variantLangCurrent.id,
+            const variantLang = await (async () => {
+              // const module_type_id_current =
+              // await this.module_type_listRepository.findOne({
+              //   where: {
+              //     id: item.component_type_id,
+              //   },
+              // });
+              // if (!module_type_id_current) return [];
+              const variant = await this.module_type_listRepository.find({
+                where: {
+                  components_id: item.components_id,
+                },
+              });
+              // console.log(variant);
 
-              component_type: variantLangCurrent.translation,
+              if (!variant) return [];
+              return await Promise.all(
+                variant.map(async (item) => {
+                  const variantLangCurrent =
+                    await this.language_module_type_listRepository.findOne({
+                      where: {
+                        module_type_id: item.id,
+                        language: lang,
+                      },
+                    });
+
+                  return {
+                    id: item.id,
+                    // module_type_id: variantLangCurrent.id,
+
+                    component_type: variantLangCurrent.translation,
+                  };
+                }),
+              );
+            })();
+
+            return {
+              variant: variantLang,
+              id: item.id,
+              apparatus_id: item.apparatus_id,
+              title: {
+                id: title.id,
+                title: title.translation,
+              },
+              value: {
+                id: value ? value.module_type_id : null,
+                value: value ? value.translation : null,
+              },
+              lang: lang,
             };
           }),
         );
 
-        return {
-          variant: variantLang,
-          id: item.id,
-          apparatus_id: item.apparatus_id,
-          title: {
-            id: title.id,
-            title: title.translation,
-          },
-          value: {
-            id: value.module_type_id,
-            value: value.translation,
-          },
-          lang: lang,
-        };
-      }),
-    );
+        return list;
+      } else {
+        return result.map((item) => {
+          const check = list.find(
+            (checkItem) => checkItem.title.title === item.title.title,
+          );
+
+          if (!check) {
+            return item;
+          } else {
+            return check;
+          }
+        });
+      }
+    })();
 
     // SERVICE
 
@@ -318,45 +536,119 @@ export class AboutDevicesService {
         where: { apparatus_id: currentApparat.id },
       });
 
-    const serviceDeviceMaintenanceTitle = await Promise.all(
-      serviceDeviceMaintenance.map(async (item) => {
-        const title = await this.language_service_maintenanceRepository.findOne(
-          {
-            where: {
-              maintenance_id: item.maintenance_id,
-              language: lang,
+    const serviceDeviceMaintenanceTitle = await (async () => {
+      const list = await Promise.all(
+        serviceDeviceMaintenance.map(async (item) => {
+          const title =
+            await this.language_service_maintenanceRepository.findOne({
+              where: {
+                maintenance_id: item.maintenance_id,
+                language: lang,
+              },
+            });
+
+          if (!title) return null;
+          return {
+            title: {
+              id: title.id,
+              title: title.translation,
             },
-          },
+            value: {
+              id: item.id,
+              value: item.value,
+            },
+            lang: lang,
+          };
+        }),
+      );
+
+      const serviceListAll = await this.service_maintenanceRepository.find({
+        where: {
+          apparatus_type_id: 1,
+        },
+      });
+      const result = await Promise.all(
+        serviceListAll.map(async (item) => {
+          const title =
+            await this.language_service_maintenanceRepository.findOne({
+              where: {
+                maintenance_id: item.id,
+                language: lang,
+              },
+            });
+
+          return {
+            title: {
+              id: title ? title.id : null,
+              title: title ? title.translation : '',
+            },
+            value: {
+              id: title ? title.maintenance_id : null,
+              value: null,
+            },
+            lang: lang,
+          };
+        }),
+      );
+
+      const createNewService = async () => {
+        const newService = await Promise.all(
+          result.map(async (item) => {
+            const total =
+              await this.service_maintenance_of_deviceRepository.save(
+                this.service_maintenance_of_deviceRepository.create({
+                  apparatus_id: currentApparat.id,
+                  maintenance_id: item.value.id,
+                  value: 0,
+                }),
+              );
+
+            return {
+              title: {
+                id: item.title ? item.title.id : null,
+                title: item.title ? item.title.title : '',
+              },
+              value: {
+                id: total ? total.id : null,
+                value: 0,
+              },
+              lang: lang,
+            };
+          }),
         );
+        return newService;
+      };
 
-        if (!title) return null;
-        return {
-          title: {
-            id: title.id,
-            title: title.translation,
-          },
-          value: {
-            id: item.id,
-            value: item.value,
-          },
-          lang: lang,
-        };
-      }),
-    );
+      if (list.length === 0) {
+        return await createNewService();
+      } else {
+        return result.map((item) => {
+          const check = list
+            .filter((item) => item !== null)
+            .find((checkItem) => checkItem.title.title === item.title.title);
 
+          if (!check) {
+            return item;
+          } else {
+            return check;
+          }
+        });
+      }
+    })();
     return {
       code: 200,
       information: {
-        name: nameApparat.name ? nameApparat.name : '',
-        location: locationApparat.translation
-          ? locationApparat.translation
-          : '',
-        owner: ownerApparat.owner,
-        user: userApparat.username ? userApparat.username : null,
-        dealer: dealerApparat.username ? dealerApparat.username : null,
-        operator: operatorApparat.username ? operatorApparat.username : null,
+        name: nameApparat ? nameApparat.name : '',
+        location: locationApparat ? locationApparat.translation : '',
+        serial_number: currentApparat.serial_number,
+        owner: ownerApparat ? ownerApparat.owner : '',
+        user: userApparat ? userApparat.username : '',
+        dealer: dealerApparat ? dealerApparat.username : '',
+        operator: operatorApparat ? operatorApparat.username : '',
         shipment_date: shipmentDataApparat,
+
         commissioning_date: commissioningDataApparat,
+
         number_score: currentApparat.number_score
           ? currentApparat.number_score
           : '',
@@ -376,6 +668,7 @@ export class AboutDevicesService {
     user_id: number,
     updateData: any,
   ) {
+    console.log(updateData);
     if (!serial_number || !updateData) {
       return {
         code: 400,
@@ -386,6 +679,7 @@ export class AboutDevicesService {
     const currentApparat = await this.apparatusRepository.findOne({
       where: {
         serial_number: serial_number,
+        type_id: 1,
       },
     });
 
@@ -397,30 +691,58 @@ export class AboutDevicesService {
     }
 
     let updateInfo = false;
-    if (updateData.hasOwnProperty('name')) {
-      await this.device_customizationRepository.update(
-        {
+    if (
+      updateData.hasOwnProperty('name') &&
+      Boolean(updateData.name) === true
+    ) {
+      const checkName = await this.device_customizationRepository.findOne({
+        where: {
           apparatus_id: currentApparat.id,
           user_id: Number(user_id),
         },
-        { name: updateData.name },
-      );
+      });
+      if (checkName) {
+        await this.device_customizationRepository.update(
+          {
+            apparatus_id: currentApparat.id,
+            user_id: Number(user_id),
+          },
+          { name: updateData.name },
+        );
+      } else {
+        await this.device_customizationRepository.save(
+          this.device_customizationRepository.create({
+            apparatus_id: currentApparat.id,
+            user_id: Number(user_id),
+            name: updateData.name,
+          }),
+        );
+      }
+
       updateInfo = true;
     }
+
     const currentUser = await this.usersRepository.findOne({
       where: {
         id: user_id,
       },
     });
 
-    if (currentUser.role === Role.CLIENT) {
+    if (
+      [Role.CLIENT, Role.ADMIN, Role.MANAGER, Role.OPERATOR].includes(
+        currentUser.role,
+      )
+    ) {
       return {
         code: 200,
         message: 'information update',
       };
     }
 
-    if (updateData.hasOwnProperty('location')) {
+    if (
+      updateData.hasOwnProperty('location') &&
+      Boolean(updateData.location) === true
+    ) {
       await this.language_locationRepository.update(
         {
           apparatus_id: currentApparat.id,
@@ -431,7 +753,10 @@ export class AboutDevicesService {
       updateInfo = true;
     }
 
-    if (updateData.hasOwnProperty('owner')) {
+    if (
+      updateData.hasOwnProperty('owner') &&
+      Boolean(updateData.owner) === true
+    ) {
       await this.apparatusRepository.update(
         {
           id: currentApparat.id,
@@ -441,7 +766,10 @@ export class AboutDevicesService {
       updateInfo = true;
     }
 
-    if (updateData.hasOwnProperty('user')) {
+    if (
+      updateData.hasOwnProperty('user') &&
+      Boolean(updateData.user) === true
+    ) {
       await this.apparatusRepository.update(
         {
           id: currentApparat.id,
@@ -451,27 +779,52 @@ export class AboutDevicesService {
       updateInfo = true;
     }
 
-    if (updateData.hasOwnProperty('dealer')) {
-      await this.apparatusRepository.update(
-        {
-          id: currentApparat.id,
-        },
-        { dealer_id: updateData.dealer },
-      );
-      updateInfo = true;
+    if (
+      updateData.hasOwnProperty('dealer') &&
+      Boolean(updateData.dealer) === true
+    ) {
+      if (typeof updateData.dealer !== 'string') {
+        await this.apparatusRepository.update(
+          {
+            id: currentApparat.id,
+          },
+          { dealer_id: updateData.dealer },
+        );
+        updateInfo = true;
+      }
     }
 
-    if (updateData.hasOwnProperty('operator')) {
-      await this.apparatusRepository.update(
-        {
-          id: currentApparat.id,
-        },
-        { operator_id: updateData.operator },
-      );
-      updateInfo = true;
+    if (
+      updateData.hasOwnProperty('operator') &&
+      Boolean(updateData.operator) === true
+    ) {
+      if (typeof updateData.operator !== 'string') {
+        await this.apparatusRepository.update(
+          {
+            id: currentApparat.id,
+          },
+          { operator_id: updateData.operator },
+        );
+        updateInfo = true;
+      }
     }
 
-    if (updateData.hasOwnProperty('serial_number')) {
+    if (
+      updateData.hasOwnProperty('serial_number') &&
+      Boolean(updateData.serial_number) === true
+    ) {
+      const checkSerialNumber = await this.apparatusRepository.findOne({
+        where: {
+          serial_number: updateData.serial_number,
+          type_id: 1,
+        },
+      });
+      if (checkSerialNumber) {
+        return {
+          code: 409,
+          message: 'such a thing exists',
+        };
+      }
       await this.apparatusRepository.update(
         {
           id: currentApparat.id,
@@ -481,7 +834,10 @@ export class AboutDevicesService {
       updateInfo = true;
     }
 
-    if (updateData.hasOwnProperty('number_score')) {
+    if (
+      updateData.hasOwnProperty('number_score') &&
+      Boolean(updateData.number_score) === true
+    ) {
       await this.apparatusRepository.update(
         {
           serial_number: serial_number,
@@ -491,7 +847,10 @@ export class AboutDevicesService {
       updateInfo = true;
     }
 
-    if (updateData.hasOwnProperty('number_act')) {
+    if (
+      updateData.hasOwnProperty('number_act') &&
+      Boolean(updateData.number_act) === true
+    ) {
       await this.apparatusRepository.update(
         {
           serial_number: serial_number,
@@ -501,7 +860,10 @@ export class AboutDevicesService {
       updateInfo = true;
     }
 
-    if (updateData.hasOwnProperty('shipment_date')) {
+    if (
+      updateData.hasOwnProperty('shipment_date') &&
+      Boolean(updateData.shipment_date) === true
+    ) {
       await this.apparatusRepository.update(
         {
           serial_number: serial_number,
@@ -511,7 +873,10 @@ export class AboutDevicesService {
       updateInfo = true;
     }
 
-    if (updateData.hasOwnProperty('commissioning_date')) {
+    if (
+      updateData.hasOwnProperty('commissioning_date') &&
+      Boolean(updateData.commissioning_date) === true
+    ) {
       await this.apparatusRepository.update(
         {
           serial_number: serial_number,
@@ -546,12 +911,48 @@ export class AboutDevicesService {
       };
     }
 
-    const currentApparat = await this.apparatusRepository.findOne({
+    const currentUser = await this.usersRepository.findOne({
       where: {
-        serial_number: serial_number,
-        user_id: user_id,
+        id: user_id,
       },
     });
+
+    const currentApparat = await (async () => {
+      if (currentUser.role === Role.SUPER_ADMIN) {
+        return await this.apparatusRepository.findOne({
+          where: {
+            serial_number: serial_number,
+            type_id: 1,
+          },
+        });
+      } else {
+        const userApparat = await this.apparatusRepository.findOne({
+          where: {
+            serial_number: serial_number,
+            user_id: user_id,
+            type_id: 1,
+          },
+        });
+        if (userApparat) return userApparat;
+        const dealerApparat = await this.apparatusRepository.findOne({
+          where: {
+            serial_number: serial_number,
+            dealer_id: user_id,
+            type_id: 1,
+          },
+        });
+        if (dealerApparat) return dealerApparat;
+
+        const operatorApparat = await this.apparatusRepository.findOne({
+          where: {
+            serial_number: serial_number,
+            operator_id: user_id,
+            type_id: 1,
+          },
+        });
+        return operatorApparat;
+      }
+    })();
 
     if (!currentApparat) {
       return {
@@ -599,12 +1000,48 @@ export class AboutDevicesService {
       };
     }
 
-    const currentApparat = await this.apparatusRepository.findOne({
+    const currentUser = await this.usersRepository.findOne({
       where: {
-        serial_number: serial_number,
-        user_id: user_id,
+        id: user_id,
       },
     });
+
+    const currentApparat = await (async () => {
+      if (currentUser.role === Role.SUPER_ADMIN) {
+        return await this.apparatusRepository.findOne({
+          where: {
+            serial_number: serial_number,
+            type_id: 1,
+          },
+        });
+      } else {
+        const userApparat = await this.apparatusRepository.findOne({
+          where: {
+            serial_number: serial_number,
+            user_id: user_id,
+            type_id: 1,
+          },
+        });
+        if (userApparat) return userApparat;
+        const dealerApparat = await this.apparatusRepository.findOne({
+          where: {
+            serial_number: serial_number,
+            dealer_id: user_id,
+            type_id: 1,
+          },
+        });
+        if (dealerApparat) return dealerApparat;
+
+        const operatorApparat = await this.apparatusRepository.findOne({
+          where: {
+            serial_number: serial_number,
+            operator_id: user_id,
+            type_id: 1,
+          },
+        });
+        return operatorApparat;
+      }
+    })();
 
     if (!currentApparat) {
       return {
@@ -623,12 +1060,29 @@ export class AboutDevicesService {
     try {
       await Promise.all(
         updateData.map(async (item) => {
-          await this.service_maintenance_of_deviceRepository.update(
-            {
-              id: item.id,
-            },
-            { value: item.newValue },
-          );
+          if (!item.id) return;
+          const checkMaintenance =
+            await this.service_maintenance_of_deviceRepository.findOne({
+              where: {
+                id: item.id,
+              },
+            });
+          if (checkMaintenance) {
+            await this.service_maintenance_of_deviceRepository.update(
+              {
+                id: item.id,
+              },
+              { value: item.newValue },
+            );
+          } else {
+            await this.service_maintenance_of_deviceRepository.save(
+              this.service_maintenance_of_deviceRepository.create({
+                maintenance_id: item.id,
+                value: item.newValue,
+                apparatus_id: currentApparat.id,
+              }),
+            );
+          }
         }),
       );
       return {

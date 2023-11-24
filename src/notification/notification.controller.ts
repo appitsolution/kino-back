@@ -21,7 +21,15 @@ export class NotificationController {
   @ApiQuery({ name: 'token', required: true })
   @Post('register')
   registerToken(@Query() args: { user_id: number; token: string }) {
-    return this.notificationService.registerToken(args.user_id, args.token);
+    return this.notificationService.registerToken(
+      Number(args.user_id),
+      args.token,
+    );
+  }
+  @ApiQuery({ name: 'user_id', required: true })
+  @Post('delete')
+  deleteToken(@Query() args: { user_id: number }) {
+    return this.notificationService.deleteToken(Number(args.user_id));
   }
 
   @ApiQuery({ name: 'user_id', required: true })

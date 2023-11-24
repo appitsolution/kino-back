@@ -59,7 +59,6 @@ export class AboutDevicesController {
   @ApiBody({ type: UpdateInfoAboutDeviceDto })
   @ApiBearerAuth()
   @Put('devices/information')
-  @Roles(Role.SUPER_ADMIN, Role.CLIENT)
   async aboutDevicesPutInformation(
     @Query()
     args: {

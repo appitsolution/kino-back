@@ -20,6 +20,9 @@ import { language_service_maintenance } from 'src/stat/entities/language_service
 import { service_maintenance_of_device } from 'src/stat/entities/service_maintenance_of_device.entity';
 import { update_task } from 'src/stat/entities/update_task.entity';
 import { module_type_list } from 'src/stat/entities/module_type_list.entity';
+import { module_list } from 'src/stat/entities/module_list.entity';
+import { service_maintenance } from 'src/stat/entities/service_maintenance.entity';
+import { users_connect } from 'src/stat/entities/users_connect';
 
 @Module({
   imports: [
@@ -40,7 +43,10 @@ import { module_type_list } from 'src/stat/entities/module_type_list.entity';
       language_service_maintenance,
       service_maintenance_of_device,
       update_task,
+      module_list,
       module_type_list,
+      service_maintenance,
+      users_connect,
     ]),
   ],
   controllers: [AboutDevicesController],

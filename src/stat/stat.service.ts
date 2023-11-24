@@ -11,23 +11,38 @@ import { users } from './entities/users.entity';
 import { Role } from 'src/constants/roles';
 import { apparatuses_by_groups } from './entities/apparatuses_by_groups.entity';
 import { device_customization } from 'src/about-devices/entities/device_customization.etity';
+import { users_connect } from './entities/users_connect';
 
-function parseDateToCustomFormat(inputDate) {
-  const date = new Date(inputDate);
-
-  const day = date.getDate().toString().padStart(2, '0');
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  const year = date.getFullYear();
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const year = date.getFullYear().toString();
+  const day = date.getDate().toString().padStart(2, '0');
 
   return `${year}-${month}-${day}`;
 }
 
+function parseDateToCustomFormat(inputDate) {
+  const date = new Date(formatDate(inputDate));
+
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear().toString();
+  return `${year}-${month}-${day}`;
+}
+
 function getDate(interval: string, customDate: string) {
-  const currentDate = customDate ? new Date(customDate) : new Date();
+  const currentDate = parseDateToCustomFormat(customDate)
+    ? new Date(parseDateToCustomFormat(customDate))
+    : new Date();
   let endDate = new Date(currentDate);
 
   if (interval === 'day') {
-    endDate.setDate(currentDate.getDate() + 1);
+    endDate.setDate(currentDate.getDate());
+    return [
+      parseDateToCustomFormat(currentDate),
+      parseDateToCustomFormat(endDate),
+    ];
   } else if (interval === 'week') {
     const dayOfWeek = currentDate.getDay();
     const daysUntilMonday = (7 - dayOfWeek) % 7;
@@ -43,7 +58,7 @@ function getDate(interval: string, customDate: string) {
     const month = currentDate.getMonth();
     const startDate = new Date(year, month, 1);
     endDate = new Date(year, month + 1, 0);
-    endDate.setDate(endDate.getDate() + 1);
+    endDate.setDate(endDate.getDate());
     return [
       parseDateToCustomFormat(startDate),
       parseDateToCustomFormat(endDate),
@@ -60,7 +75,7 @@ function getDate(interval: string, customDate: string) {
   } else {
     return [
       parseDateToCustomFormat(currentDate),
-      parseDateToCustomFormat(currentDate),
+      parseDateToCustomFormat(endDate),
     ];
   }
 
@@ -87,6 +102,8 @@ export class StatService {
     private readonly usersRepository: Repository<users>,
     @InjectRepository(device_customization)
     private readonly udeviceCustomizationRepository: Repository<device_customization>,
+    @InjectRepository(users_connect)
+    private readonly usersConnectRepository: Repository<users_connect>,
   ) {}
 
   async statStart(user_id: number) {
@@ -127,7 +144,11 @@ export class StatService {
         where: { user_id },
       });
 
-      const allApparatus = await this.apparatusRepository.find({});
+      const allApparatus = await this.apparatusRepository.find({
+        where: {
+          type_id: 1,
+        },
+      });
       const allApparatusName = await Promise.all(
         allApparatus.map(async (item) => {
           try {
@@ -162,9 +183,93 @@ export class StatService {
       const lastMonthStartDate = new Date();
       lastMonthStartDate.setMonth(lastMonthStartDate.getMonth() - 1);
 
-      const allApparatus = await this.apparatusRepository.find({
-        where: { user_id },
-      });
+      const allApparatus = await (async () => {
+        const users = await this.apparatusRepository.find({
+          where: {
+            user_id: Number(user_id),
+            type_id: 1,
+          },
+        });
+
+        const dealers = await this.apparatusRepository.find({
+          where: {
+            dealer_id: Number(user_id),
+            type_id: 1,
+          },
+        });
+
+        const operators = await this.apparatusRepository.find({
+          where: {
+            operator_id: Number(user_id),
+            type_id: 1,
+          },
+        });
+        const adminsOrManagerRequest = await this.usersConnectRepository.find({
+          where: {
+            user_id_s: Number(user_id),
+          },
+        });
+        const admins = await Promise.all(
+          adminsOrManagerRequest.map(async (item) => {
+            const apparatusAdminOrManager = await this.apparatusRepository.find(
+              {
+                where: {
+                  user_id: item.user_id,
+                  type_id: 1,
+                },
+              },
+            );
+            return apparatusAdminOrManager;
+          }),
+        );
+
+        const manager = await Promise.all(
+          adminsOrManagerRequest.map(async (item) => {
+            const managerRequest = await this.usersConnectRepository.find({
+              where: {
+                user_id_s: item.user_id,
+              },
+            });
+
+            return await Promise.all(
+              managerRequest.map(async (checkItem) => {
+                const apparatusAdminOrManager =
+                  await this.apparatusRepository.find({
+                    where: {
+                      user_id: checkItem.user_id,
+                      type_id: 1,
+                    },
+                  });
+                return apparatusAdminOrManager;
+              }),
+            );
+          }),
+        );
+
+        if (currentUser.role === Role.DEALER) {
+          return dealers;
+        }
+
+        const allApparatusList = [
+          ...users,
+          ...dealers,
+          ...operators,
+          ...admins.flat(),
+          ...manager.flat(2),
+        ];
+
+        const newAllApparatusList = [];
+
+        allApparatusList.forEach((item) => {
+          if (newAllApparatusList.find((fin) => fin.id === item.id)) {
+            return;
+          } else {
+            return newAllApparatusList.push(item);
+          }
+        });
+
+        return newAllApparatusList;
+      })();
 
       const allApparatusName = await Promise.all(
         allApparatus.map(async (item) => {
@@ -394,10 +499,18 @@ export class StatService {
     if (typeOfData === 'sell') {
       if (!group_name) {
         const [startDate, endDate] = getDate(interval, date);
-        return await this.reservedPortionsRepository.query(
+
+        const result = await this.reservedPortionsRepository.query(
           'SELECT * FROM reserved_portions WHERE date BETWEEN ? AND ? AND serial_number = ?',
           [startDate, endDate, serial_number],
         );
+        const fixDate = result.map((item) => {
+          return {
+            ...item,
+            date: parseDateToCustomFormat(item.date),
+          };
+        });
+        return fixDate;
       } else {
         const currentGroup = await this.groupListRepository.findOne({
           where: {
@@ -424,6 +537,7 @@ export class StatService {
             return await this.apparatusRepository.findOne({
               where: {
                 id: item.apparatus_id,
+                type_id: 1,
               },
             });
           }),

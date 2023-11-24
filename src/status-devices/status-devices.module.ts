@@ -13,6 +13,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { cleaning } from 'src/stat/entities/cleaning.entity';
 import { popcorn_level } from 'src/stat/entities/popcorn_level.entity';
 import { actual_popcorn_lvl } from 'src/stat/entities/actual_popcorn_lvl.entity';
+import { users_connect } from 'src/stat/entities/users_connect';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { actual_popcorn_lvl } from 'src/stat/entities/actual_popcorn_lvl.entity'
       cleaning,
       popcorn_level,
       actual_popcorn_lvl,
+      users_connect,
     ]),
   ],
   controllers: [StatusDevicesController],

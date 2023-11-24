@@ -7,6 +7,7 @@ import { group_list } from 'src/stat/entities/group_list.entity';
 import { apparatuses_by_groups } from 'src/stat/entities/apparatuses_by_groups.entity';
 import { apparatus } from 'src/stat/entities/apparatus.entity';
 import { users } from 'src/stat/entities/users.entity';
+import { device_customization } from 'src/about-devices/entities/device_customization.etity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { users } from 'src/stat/entities/users.entity';
       apparatuses_by_groups,
       apparatus,
       users,
+      device_customization
     ]),
   ],
   controllers: [GroupController],

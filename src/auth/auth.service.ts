@@ -7,67 +7,84 @@ import { Auth } from './entities/auth.entity';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { users } from 'src/stat/entities/users.entity';
 import { Role } from 'src/constants/roles';
+import { users_connect } from 'src/stat/entities/users_connect';
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-4;
 
 @Injectable()
 export class AuthService {
   private readonly secretKey = '345gsd#fdfgsd';
   constructor(
     @InjectRepository(users) private repositoryusers: Repository<users>,
+    @InjectRepository(users_connect)
+    private repositoryUsersConnect: Repository<users_connect>,
   ) {}
 
-  async create(createAuthDto: CreateAuthDto) {
-    if (
-      !createAuthDto.login ||
-      !createAuthDto.role ||
-      !createAuthDto.password
-    ) {
-      return {
-        status: 400,
-        message: 'Not enough arguments',
-      };
-    }
-
-    const checkUser = await this.repositoryusers.findOne({
-      where: { username: createAuthDto.login },
-    });
-
-    if (!checkUser) {
-    } else {
-      return {
-        code: 409,
-        message: 'This user already exists',
-      };
-    }
-
-    let checkRole = false;
-    for (let role in Role) {
-      if (createAuthDto.role === role) {
-        checkRole = true;
+  async create(createAuthDto: CreateAuthDto, user_id: number) {
+    try {
+      if (
+        !createAuthDto.login ||
+        !createAuthDto.role ||
+        !createAuthDto.password ||
+        user_id === undefined
+      ) {
+        return {
+          status: 400,
+          message: 'Not enough arguments',
+        };
       }
-    }
 
-    if (!checkRole) {
+      const checkUser = await this.repositoryusers.findOne({
+        where: { username: createAuthDto.login },
+      });
+
+      if (!checkUser) {
+      } else {
+        return {
+          code: 409,
+          message: 'This user already exists',
+        };
+      }
+
+      let checkRole = false;
+      for (let role in Role) {
+        if (createAuthDto.role === role) {
+          checkRole = true;
+        }
+      }
+
+      if (!checkRole) {
+        return {
+          code: 404,
+          message: 'not found role',
+        };
+      }
+
+      const newUser = await this.repositoryusers.save(
+        this.repositoryusers.create({
+          role: createAuthDto.role,
+          username: createAuthDto.login,
+          password: bcrypt.hashSync(createAuthDto.password),
+        }),
+      );
+
+      await this.repositoryUsersConnect.save(
+        this.repositoryUsersConnect.create({
+          user_id: user_id,
+          user_id_s: newUser.id,
+        }),
+      );
+
       return {
-        code: 404,
-        message: 'not found role',
+        code: 201,
+        newUser,
+      };
+    } catch (err) {
+      console.log(err);
+      return {
+        code: 500,
       };
     }
-
-    const newUser = await this.repositoryusers.save(
-      this.repositoryusers.create({
-        role: createAuthDto.role,
-        username: createAuthDto.login,
-        password: bcrypt.hashSync(createAuthDto.password),
-      }),
-    );
-
-    return {
-      code: 201,
-      newUser,
-    };
   }
 
   async login(loginAuthDto: LoginAuthDto) {
@@ -81,8 +98,6 @@ export class AuthService {
     const checkUser = await this.repositoryusers.findOne({
       where: { username: loginAuthDto.login },
     });
-
-    console.log(checkUser);
 
     if (!checkUser) {
       return {

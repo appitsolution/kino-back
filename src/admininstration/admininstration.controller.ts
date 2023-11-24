@@ -30,10 +30,11 @@ export class AdmininstrationController {
     private readonly admininstrationService: AdmininstrationService,
   ) {}
 
+  @ApiQuery({ name: 'user_id' })
   @ApiBearerAuth()
   @Get('quick')
-  async adminQuick() {
-    return this.admininstrationService.adminQuick();
+  async adminQuick(@Query() args: { user_id: number }) {
+    return this.admininstrationService.adminQuick(args.user_id);
   }
 
   @ApiQuery({ name: 'id' })

@@ -10,8 +10,7 @@ import {
 } from '@nestjs/common';
 import { ErrorService } from './error.service';
 import { CreateErrorDto } from './dto/create-error.dto';
-import { UpdateErrorDto } from './dto/update-error.dto';
-import { ApiQuery } from '@nestjs/swagger';
+import { ApiBody, ApiQuery } from '@nestjs/swagger';
 
 @Controller('error')
 export class ErrorController {
@@ -20,6 +19,11 @@ export class ErrorController {
   @Get('start')
   startError() {
     return this.errorService.startError();
+  }
+
+  @Post('create')
+  async createError(@Body() args: CreateErrorDto) {
+    return this.errorService.createError(args.serial_number, args.text_error);
   }
 
   @ApiQuery({ name: 'serial_number', required: true })

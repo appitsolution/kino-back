@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { Admininstration } from './entities/admininstration.entity';
 import { users } from 'src/stat/entities/users.entity';
 import { owners } from 'src/stat/entities/owner.entity';
+import { users_connect } from 'src/stat/entities/users_connect';
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
@@ -16,22 +17,97 @@ export class AdmininstrationService {
     private readonly usersRepository: Repository<users>,
     @InjectRepository(owners)
     private readonly ownersRepository: Repository<owners>,
+    @InjectRepository(users_connect)
+    private readonly usersConnectRepository: Repository<users_connect>,
   ) {}
 
-  async adminQuick() {
-    const allUsers = await this.usersRepository.find();
-    const allOwners = await this.ownersRepository.find();
+  async adminQuick(user_id: number) {
+    try {
+      if (user_id === undefined) {
+        return {
+          code: 400,
+          message: 'not such arguments',
+        };
+      }
 
-    return {
-      code: 200,
-      users: allUsers.map((item) => ({
-        role: item.role,
-        id: item.id,
-        username: item.username,
-        created_at: item.created_at,
-      })),
-      owners: allOwners,
-    };
+      const allUsersConnect = await this.usersConnectRepository.find({
+        where: {
+          user_id: user_id,
+        },
+      });
+
+      const allUsers = await Promise.all(
+        allUsersConnect.map(async (item) => {
+          return await this.usersRepository.findOne({
+            where: {
+              id: item.user_id_s,
+            },
+          });
+        }),
+      );
+
+      const getUserTree = async (userId) => {
+        const userConnects = await this.usersConnectRepository.find({
+          where: {
+            user_id: userId,
+          },
+        });
+
+        const userTree = [];
+
+        await Promise.all(
+          userConnects.map(async (userConnect) => {
+            const user = await this.usersRepository.findOne({
+              where: {
+                id: userConnect.user_id_s,
+              },
+            });
+
+            if (user) {
+              userTree.push({
+                user,
+                subTree: await getUserTree(user.id),
+              });
+            }
+          }),
+        );
+
+        return userTree;
+      };
+
+      const flattenUserTree = (userTree) => {
+        const flatArray = [];
+
+        userTree.forEach((node) => {
+          flatArray.push(node.user);
+          flatArray.push(...flattenUserTree(node.subTree));
+        });
+
+        return flatArray;
+      };
+
+      const userTree = await getUserTree(user_id);
+      const flattenedUserArray = flattenUserTree(userTree);
+
+      const allOwners = await this.ownersRepository.find();
+
+      return {
+        code: 200,
+        users: flattenedUserArray.map((item) => ({
+          role: item.role,
+          id: item.id,
+          username: item.username,
+          created_at: item.created_at,
+        })),
+        owners: allOwners,
+      };
+    } catch (err) {
+      console.log(err);
+
+      return {
+        code: 500,
+      };
+    }
   }
 
   async adminUserFindOne(id: number) {

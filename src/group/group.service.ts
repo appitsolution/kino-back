@@ -9,6 +9,7 @@ import { apparatuses_by_groups } from 'src/stat/entities/apparatuses_by_groups.e
 import { apparatus } from 'src/stat/entities/apparatus.entity';
 import { users } from 'src/stat/entities/users.entity';
 import { Role } from 'src/constants/roles';
+import { device_customization } from 'src/about-devices/entities/device_customization.etity';
 
 @Injectable()
 export class GroupService {
@@ -22,6 +23,8 @@ export class GroupService {
     private apparatuses_by_groupsRepository: Repository<apparatuses_by_groups>,
     @InjectRepository(users)
     private usersRepository: Repository<users>,
+    @InjectRepository(device_customization)
+    private deviceCustomizationRepository: Repository<device_customization>,
   ) {}
 
   async groupQuick(user_id: number) {
@@ -71,17 +74,49 @@ export class GroupService {
 
     const allApparatus = await (async () => {
       if (currentUser.role === 'SUPER_ADMIN') {
-        return await this.apparatusList.find();
+        const apparatusList = await this.apparatusList.find();
+        return await Promise.all(
+          apparatusList.map(async (item) => {
+            const name = await this.deviceCustomizationRepository.findOne({
+              where: {
+                user_id: Number(user_id),
+                apparatus_id: item.id,
+              },
+            });
+
+            return {
+              ...item,
+              name: name ? name.name : null,
+            };
+          }),
+        );
       } else {
-        return await this.apparatusList.find({
+        const apparatusList = await this.apparatusList.find({
           where: { user_id: Number(user_id) },
         });
+        return await Promise.all(
+          apparatusList.map(async (item) => {
+            const name = await this.deviceCustomizationRepository.findOne({
+              where: {
+                user_id: Number(user_id),
+                apparatus_id: item.id,
+              },
+            });
+
+            return {
+              ...item,
+              name: name ? name.name : null,
+            };
+          }),
+        );
       }
     })();
 
     return {
       allGroup: groupApparat,
-      allApparatus: allApparatus,
+      allApparatus: allApparatus.sort((a, b) =>
+        a.serial_number.localeCompare(b.serial_number),
+      ),
     };
   }
 

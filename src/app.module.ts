@@ -41,6 +41,9 @@ import { NotificationModule } from './notification/notification.module';
 import { notification } from './stat/entities/notification.entity';
 import { ErrorModule } from './error/error.module';
 import { error_processed } from './stat/entities/error_processed.entity';
+import { users_connect } from './stat/entities/users_connect';
+import { module_list } from './stat/entities/module_list.entity';
+import { service_maintenance } from './stat/entities/service_maintenance.entity';
 
 @Module({
   imports: [
@@ -81,6 +84,9 @@ import { error_processed } from './stat/entities/error_processed.entity';
         actual_popcorn_lvl,
         notification,
         error_processed,
+        users_connect,
+        module_list,
+        service_maintenance,
       ],
       synchronize: false,
     }),

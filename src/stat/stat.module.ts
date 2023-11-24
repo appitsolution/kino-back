@@ -9,6 +9,7 @@ import { apparatus } from './entities/apparatus.entity';
 import { users } from './entities/users.entity';
 import { apparatuses_by_groups } from './entities/apparatuses_by_groups.entity';
 import { device_customization } from 'src/about-devices/entities/device_customization.etity';
+import { users_connect } from './entities/users_connect';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { device_customization } from 'src/about-devices/entities/device_customiz
       users,
       apparatuses_by_groups,
       device_customization,
+      users_connect,
     ]),
   ],
   controllers: [StatController],
