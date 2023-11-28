@@ -347,6 +347,17 @@ export class AboutDevicesService {
           where: { components_id: item.id },
         });
 
+        const variantLang = await Promise.all(
+          variant.map(async (item) => {
+            const translateVariant =
+              await this.language_module_type_listRepository.findOne({
+                where: { module_type_id: item.id, language: lang },
+              });
+
+            return { ...item, component_type: translateVariant.translation };
+          }),
+        );
+
         return {
           title: {
             id: item.id,
@@ -356,7 +367,7 @@ export class AboutDevicesService {
             id: null,
             value: null,
           },
-          variant: variant,
+          variant: variantLang,
           lang: lang,
         };
       }),
@@ -1033,6 +1044,7 @@ export class AboutDevicesService {
     try {
       await Promise.all(
         updateData.map(async (item) => {
+          if (!item.new_component_type_id) return;
           if (!item.id) {
             await this.modules_of_deviceRepository.save(
               this.modules_of_deviceRepository.create({
